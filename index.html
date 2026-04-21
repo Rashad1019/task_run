@@ -466,7 +466,10 @@
                     body: JSON.stringify({ user_input: input })
                 });
 
-                if (!response.ok) throw new Error(`API returned ${response.status}`);
+                if (!response.ok) {
+                    const errBody = await response.json().catch(() => ({}));
+                    throw new Error(errBody.error || `API returned ${response.status}`);
+                }
 
                 const data = await response.json();
                 outputDot.classList.add('active');
@@ -497,7 +500,7 @@
             } catch (error) {
                 console.error('Error:', error);
                 emptyState.style.display = 'flex';
-                emptyState.querySelector('p').textContent = 'Error generating schedule. Check your API key.';
+                emptyState.querySelector('p').textContent = error.message || 'Error generating schedule.';
             } finally {
                 generateBtn.classList.remove('loading');
                 generateBtn.disabled = false;
