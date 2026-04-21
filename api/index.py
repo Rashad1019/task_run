@@ -93,7 +93,20 @@ class handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
-        # Return a clean 405 Method Not Allowed instead of 501
+        # Bulletproof fallback: If Vercel forces the root URL to this Python file, serve the HTML
+        if self.path in ('/', '/index.html'):
+            try:
+                with open('index.html', 'rb') as f:
+                    content = f.read()
+                self.send_response(200)
+                self.send_header('Content-type', 'text/html')
+                self.end_headers()
+                self.wfile.write(content)
+                return
+            except Exception:
+                pass
+                
+        # Return a clean 405 Method Not Allowed instead of 501 for API endpoints
         self.send_response(405)
         self.send_header('Content-type', 'application/json')
         self.send_header('Access-Control-Allow-Origin', '*')
