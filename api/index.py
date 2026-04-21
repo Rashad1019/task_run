@@ -3,20 +3,8 @@ import json
 import os
 from google import genai
 from google.genai import types
-from pydantic import BaseModel
-from typing import Literal
-
 api_key = os.environ.get("GEMINI_API_KEY")
 client = genai.Client(api_key=api_key) if api_key else genai.Client()
-
-class ScheduleItem(BaseModel):
-    task: str
-    priority: Literal["P0", "P1", "P2", "P3"]
-    estimated_minutes: int
-    reasoning: str
-
-class TaskPlan(BaseModel):
-    schedule: list[ScheduleItem]
 
 SYSTEM_PROMPT = """
 You are an expert productivity AI agent. Your job is to take an unstructured list of tasks
@@ -52,7 +40,23 @@ class handler(BaseHTTPRequestHandler):
                     system_instruction=SYSTEM_PROMPT,
                     temperature=0.1,
                     response_mime_type="application/json",
-                    response_schema=TaskPlan,
+                    response_schema=types.Schema(
+                        type=types.Type.OBJECT,
+                        properties={
+                            "schedule": types.Schema(
+                                type=types.Type.ARRAY,
+                                items=types.Schema(
+                                    type=types.Type.OBJECT,
+                                    properties={
+                                        "task": types.Schema(type=types.Type.STRING),
+                                        "priority": types.Schema(type=types.Type.STRING),
+                                        "estimated_minutes": types.Schema(type=types.Type.INTEGER),
+                                        "reasoning": types.Schema(type=types.Type.STRING),
+                                    }
+                                )
+                            )
+                        }
+                    ),
                 ),
             )
 
