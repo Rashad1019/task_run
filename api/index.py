@@ -76,6 +76,14 @@ class handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps({"error": str(e)}).encode('utf-8'))
 
+    def do_GET(self):
+        self.send_response(405)
+        self.send_header('Content-type', 'application/json')
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Allow', 'POST, OPTIONS')
+        self.end_headers()
+        self.wfile.write(b'{"error": "Method Not Allowed. Use POST."}')
+
     def do_OPTIONS(self):
         # Handle CORS for local testing
         self.send_response(200)
@@ -83,3 +91,11 @@ class handler(BaseHTTPRequestHandler):
         self.send_header('Access-Control-Allow-Methods', 'POST, OPTIONS')
         self.send_header('Access-Control-Allow-Headers', 'Content-Type')
         self.end_headers()
+
+    def do_GET(self):
+        # Return a clean 405 Method Not Allowed instead of 501
+        self.send_response(405)
+        self.send_header('Content-type', 'application/json')
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.end_headers()
+        self.wfile.write(json.dumps({"error": "Method Not Allowed. This API only accepts POST requests."}).encode('utf-8'))
