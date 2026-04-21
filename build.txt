@@ -1,0 +1,80 @@
+https://amanxai.com/2026/04/15/build-a-task-planning-ai-agent/
+
+I am working on this project I am not going to use ollama I am going with gemini 
+
+how does this look 
+
+pip install google-genai
+
+
+setx GEMINI_API_KEY "your_api_key_here"
+
+
+import json
+from typing import Literal
+from pydantic import BaseModel
+from google import genai
+from google.genai import types
+
+
+class ScheduleItem(BaseModel):
+    task: str
+    priority: Literal["P0", "P1", "P2", "P3"]
+    estimated_minutes: int
+    reasoning: str
+
+
+class TaskPlan(BaseModel):
+    schedule: list[ScheduleItem]
+
+
+SYSTEM_PROMPT = """
+You are an expert productivity AI agent. Your job is to take an unstructured list of tasks
+from a professional and convert them into a structured, prioritized daily schedule.
+
+Rules for prioritization:
+1. P0 (Critical): Production bugs, urgent client requests, or hard deadlines today.
+2. P1 (High): Core project work, unblocking other team members.
+3. P2 (Medium): Routine tasks, emails, documentation.
+4. P3 (Low): Nice-to-haves, learning, long-term planning.
+"""
+
+
+def generate_schedule(user_input: str) -> TaskPlan:
+    client = genai.Client()
+
+    response = client.models.generate_content(
+        model="gemini-3.1-flash-lite-preview",
+        contents=user_input,
+        config=types.GenerateContentConfig(
+            system_instruction=SYSTEM_PROMPT,
+            temperature=0.1,
+            response_mime_type="application/json",
+            response_schema=TaskPlan,
+        ),
+    )
+
+    return TaskPlan.model_validate_json(response.text)
+
+
+if __name__ == "__main__":
+    messy_brain_dump = """
+    I need to review Sarah's pull request for the login page, it's blocking her.
+    Also the database is throwing 500 errors on the production reporting dashboard,
+    need to look at that immediately.
+    Should probably reply to the marketing team about the new analytics tracking.
+    I want to spend some time reading the new generative AI paper that came out.
+    Oh, and I have a 1:1 with my manager at 2 PM, I need to prep some notes for that.
+    """
+
+    plan = generate_schedule(messy_brain_dump)
+
+    print("YOUR OPTIMIZED SCHEDULE")
+    print("-" * 30)
+
+    for item in plan.schedule:
+        print(f"[{item.priority}] {item.task} ({item.estimated_minutes} min)")
+        print(f"    {item.reasoning}\n")
+
+
+
