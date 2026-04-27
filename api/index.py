@@ -3,6 +3,8 @@ import json
 import os
 from google import genai
 from google.genai import types
+from google.genai import errors
+from tenacity import retry, wait_exponential, stop_after_attempt, retry_if_exception_type
 
 api_key = os.environ.get("GEMINI_API_KEY")
 client = genai.Client(api_key=api_key) if api_key else genai.Client()
@@ -38,6 +40,24 @@ Rules for prioritization:
 4. P3 (Low): Nice-to-haves, learning, long-term planning.
 """
 
+@retry(
+    retry=retry_if_exception_type(errors.APIError),
+    wait=wait_exponential(multiplier=1, min=2, max=10),
+    stop=stop_after_attempt(3),
+    reraise=True
+)
+def call_gemini(user_input):
+    return client.models.generate_content(
+        model="gemini-3.1-flash-lite-preview",
+        contents=user_input,
+        config=types.GenerateContentConfig(
+            system_instruction=SYSTEM_PROMPT,
+            temperature=0.1,
+            response_mime_type="application/json",
+            response_schema=RESPONSE_SCHEMA,
+        ),
+    )
+
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
         content_length = int(self.headers['Content-Length'])
@@ -54,16 +74,7 @@ class handler(BaseHTTPRequestHandler):
                 self.wfile.write(json.dumps({"error": "user_input is required"}).encode('utf-8'))
                 return
 
-            response = client.models.generate_content(
-                model="gemini-3.1-flash-lite-preview",
-                contents=user_input,
-                config=types.GenerateContentConfig(
-                    system_instruction=SYSTEM_PROMPT,
-                    temperature=0.1,
-                    response_mime_type="application/json",
-                    response_schema=RESPONSE_SCHEMA,
-                ),
-            )
+            response = call_gemini(user_input)
 
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
@@ -71,6 +82,14 @@ class handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(response.text.encode('utf-8'))
 
+        except errors.APIError as e:
+            status_code = 503 if ("503" in str(e) or getattr(e, 'code', None) == 503) else 500
+            error_msg = "AI model is currently overloaded. Please retry." if status_code == 503 else f"AI Error: {str(e)}"
+            self.send_response(status_code)
+            self.send_header('Content-type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": error_msg}).encode('utf-8'))
         except Exception as e:
             self.send_response(500)
             self.send_header('Content-type', 'application/json')

@@ -1,0 +1,78 @@
+{
+  "$schema": "https://aka.ms/codetour-schema",
+  "title": "Task/Intel — Architecture Walkthrough",
+  "description": "End-to-end tour of the AI task planner: schema models, CLI entry point, serverless API handler, and the web frontend. Follow the steps in order to understand how a brain dump becomes a prioritized schedule.",
+  "ref": "main",
+  "steps": [
+    {
+      "file": "requirements.txt",
+      "line": 1,
+      "title": "Dependencies — why the pinning matters",
+      "description": "Only two runtime dependencies: `google-genai==0.6.0` (pinned exact) and `pydantic>=2.0,<2.11`. The upper bound on Pydantic is non-obvious — pydantic>=2.11 triggers an `Extra inputs are not permitted` error when the google-genai SDK serialises a Pydantic model into a `$ref`-based JSON Schema. The web handler works around this entirely; see `api/index.py`."
+    },
+    {
+      "file": "agent.py",
+      "line": 8,
+      "title": "Shared response schema — Pydantic models",
+      "description": "The canonical output shape is expressed as two Pydantic models: `ScheduleItem` (one task) and `TaskPlan` (the schedule list). The `Literal` type on `priority` constrains the model to exactly P0–P3, giving free validation without extra code. These models are used only in the CLI path — the web API rebuilds the same shape via `types.Schema` to avoid the Pydantic SDK bug."
+    },
+    {
+      "file": "agent.py",
+      "line": 19,
+      "title": "System prompt — the prioritization rules",
+      "description": "The four-tier priority ladder (P0 critical → P3 low) lives here as a system instruction. It is duplicated verbatim in `api/index.py:30`. If you change the rules, update both. The `temperature=0.1` setting (line 37) keeps output deterministic — high temperatures cause random priority swings."
+    },
+    {
+      "file": "agent.py",
+      "line": 31,
+      "title": "generate_schedule — CLI Gemini call",
+      "description": "This is the core inference call for the terminal app. `response_schema=TaskPlan` (a Pydantic class) tells the SDK to constrain output to that shape and parse it automatically. The return value is already a `TaskPlan` instance — no JSON decoding needed. This works only because `pydantic<2.11` is installed; the web handler cannot use this same pattern."
+    },
+    {
+      "file": "agent.py",
+      "line": 46,
+      "title": "CLI entry point — interactive loop",
+      "description": "The `__main__` block boots an interactive REPL. It uses `getpass` so the API key is never echoed to the terminal. The loop accepts 'quit'/'exit' to stop gracefully. Color coding maps priorities to ANSI escape codes (P0=red, P1=yellow, P2=cyan, P3=blue). This is intentionally self-contained — no web server, no dependencies beyond the two in requirements.txt."
+    },
+    {
+      "file": "api/index.py",
+      "line": 10,
+      "title": "RESPONSE_SCHEMA — types.Schema workaround",
+      "description": "Instead of re-using the Pydantic `TaskPlan` model, the serverless handler defines the identical schema using `types.Schema` objects from the google-genai SDK. This avoids the pydantic>=2.11 `$ref` serialisation bug that would crash Vercel deployments. The shape produced is byte-for-byte identical to what the Pydantic models would produce."
+    },
+    {
+      "file": "api/index.py",
+      "line": 41,
+      "title": "handler class — Vercel serverless entry",
+      "description": "Vercel's Python runtime looks for a class named `handler` that subclasses `BaseHTTPRequestHandler`. The `do_POST` method (line 42) is the hot path: reads the body, calls Gemini, and streams the raw JSON text back. Unlike the CLI, it calls `response.text` (line 72) instead of `response.parsed` — bypassing Pydantic entirely. `do_OPTIONS` (line 100) handles CORS preflight so the frontend can POST from any origin."
+    },
+    {
+      "file": "vercel.json",
+      "line": 1,
+      "title": "Routing — how Vercel wires the two files",
+      "description": "Two rewrites cover the whole surface: `/api/*` → `api/index.py` (the serverless handler) and `/` → `index.html` (the SPA). There is no build step — Vercel installs `requirements.txt` at deploy time and serves `index.html` as a static asset. Push to `main` to deploy."
+    },
+    {
+      "file": "index.html",
+      "line": 9,
+      "title": "Design tokens — dark theme palette",
+      "description": "All colours, borders, and glow values are CSS custom properties on `:root`. Priority colours map directly to the P0–P3 names (`--p0` through `--p3`). This is the single source of truth for the visual language — changing a token here propagates to every card, badge, and border that references it."
+    },
+    {
+      "file": "index.html",
+      "line": 452,
+      "title": "Frontend fetch — the POST to /api/index",
+      "description": "The click handler (line 452) is the entire frontend logic. It POSTs `{ user_input }` to `/api/index`, receives the schedule JSON, and renders a `task-card` div per item with staggered `animationDelay` for the slide-in effect. Error handling falls back to showing the raw error message in the empty-state placeholder. No framework, no build tool — plain fetch + DOM manipulation."
+    },
+    {
+      "file": "index.html",
+      "line": 477,
+      "title": "Task card rendering — priority-to-class mapping",
+      "description": "Each card gets a CSS class matching the lowercase priority string (`p0`–`p3`). The `::before` pseudo-element (a 3 px coloured left border strip) and the `border-color` on the card itself are driven entirely by these classes — no inline styles. The `animationDelay` staggers cards so they slide in sequentially rather than all at once."
+    },
+    {
+      "title": "Where to go next",
+      "description": "**To add a new priority level**: add the literal to `ScheduleItem` in `agent.py`, add the equivalent `types.Schema` string constraint in `api/index.py`, and add CSS variables + card classes in `index.html`.\n\n**To switch models**: change the `model` string in `agent.py:33` and `api/index.py:58` — both must match.\n\n**To run locally**: `pip install -r requirements.txt`, set `GEMINI_API_KEY`, then either `python agent.py` (CLI) or use Vercel dev / a local HTTP server for the web UI."
+    }
+  ]
+}
