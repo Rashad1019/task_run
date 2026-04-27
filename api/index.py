@@ -46,9 +46,9 @@ Rules for prioritization:
     stop=stop_after_attempt(3),
     reraise=True
 )
-def call_gemini(user_input):
+def call_gemini(user_input, model_name):
     return client.models.generate_content(
-        model="gemini-3.1-flash-lite-preview",
+        model=model_name,
         contents=user_input,
         config=types.GenerateContentConfig(
             system_instruction=SYSTEM_PROMPT,
@@ -57,6 +57,21 @@ def call_gemini(user_input):
             response_schema=RESPONSE_SCHEMA,
         ),
     )
+
+def generate_schedule_with_fallback(user_input):
+    models_to_try = ["gemini-3.1-flash-lite-preview", "gemini-2.5-pro"]
+    last_error = None
+    
+    for model_name in models_to_try:
+        try:
+            return call_gemini(user_input, model_name)
+        except errors.APIError as e:
+            last_error = e
+            # Skip to the next model if this one fails
+            pass
+            
+    # If both models fail after all retries, raise the final error
+    raise last_error
 
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
@@ -74,7 +89,7 @@ class handler(BaseHTTPRequestHandler):
                 self.wfile.write(json.dumps({"error": "user_input is required"}).encode('utf-8'))
                 return
 
-            response = call_gemini(user_input)
+            response = generate_schedule_with_fallback(user_input)
 
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
